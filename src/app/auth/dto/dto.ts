@@ -1,26 +1,45 @@
-import {Gender} from "../../../lib/enum/enum";
+import { Gender } from "../../../lib/enum/enum";
 
-// todo contract of auth
+export interface RegisterDto {
+    userName: string;
+    email: string;
+    password: string;
+    gender?: Gender;
+    phoneNumber?: string;
+    name?: string;
+}
 
-export interface RegisterDto{
-    userName:String ,
-    email:String ,
-    password:String,
-    gender?:Gender
-    phoneNumber?: String,
+export interface LoginDto {
+    email: string;
+    password: string;
 }
-export interface LoginDto{
-    email:String ,
-    password:String
+
+export interface SendOtpDto {
+    email: string;
 }
-export interface SendOtpDto{
-    email:String ,
+
+export interface VerifyEmailDto {
+    email: string;
+    code?: string;
+    otp?: string;
 }
-export interface VerifyEmailDto{
-    email:String ,
-    otp:String
+
+export interface ForgetPasswordDto {
+    email: string;
+    code?: string;
+    otp?: string;
+    newPassword?: string;
 }
-export interface ForgetPasswordDto{
-    email:String ,
-    otp:String
+
+export interface RefreshTokenDto {
+    refreshToken: string;
+}
+
+export interface GoogleLoginDto {
+    idToken: string;
+}
+
+export interface TwoStepVerificationDto {
+    email: string;
+    code: string;
 }

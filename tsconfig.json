@@ -21,16 +21,15 @@
     "exactOptionalPropertyTypes": true,
     // Recommended Options
     "strict": true,
-    "include": [
-      "src"
-
-    ],
     "skipDefaultLibCheck": true,
     "jsx": "react-jsx",
     "verbatimModuleSyntax": false,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
-    "skipLibCheck": true,
-  }
+    "skipLibCheck": true
+  },
+  "include": [
+    "src"
+  ]
 }
