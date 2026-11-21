@@ -1,20 +1,31 @@
-import {createApp} from "./app";
+import { createApp } from "./app";
 import * as http from "node:http";
 import mongoose from "mongoose";
 import { config } from "./lib/config/env";
+import {connectDB} from "./lib/db/connections";
 
-const app = createApp()
+const app = createApp();
+const server = http.createServer(app);
 
-const server = http.createServer(app)
-
-server.listen(config.port, () => {
-    console.log(`server working on port ${config.port}`)
-})
-async function shutDown() {
-    await mongoose.disconnect()
-    server.close()
-    process.exit(0)
+async function DbEstablished() {
+    try {
+        await connectDB();
+        server.listen(config.port, () => {
+            console.log(`http://localhost:${config.port}`);
+        });
+    } catch (error) {
+        console.error("MongoDB connection failed:", error);
+        process.exit(1);
+    }
 }
 
-process.on("SIGINT",shutDown)
-process.on("SIGTERM",shutDown)
+async function shutDown() {
+    server.close();
+    await mongoose.disconnect();
+    process.exit(0);
+}
+
+process.on("SIGINT", shutDown);
+process.on("SIGTERM", shutDown);
+
+DbEstablished();

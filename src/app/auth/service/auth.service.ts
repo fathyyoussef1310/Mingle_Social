@@ -25,13 +25,19 @@ import { TokenService, tokenService as defaultTokenService } from "./token.servi
 import { Provider } from "../../../lib/enum/enum";
 
 export class AuthServices {
-    // Constants
     private readonly MAX_LOGIN_TRIES = 5;
     private readonly BAN_TTL_MS = toMins(15, "minutes");
     private readonly TRIES_TTL_MS = toMins(15, "minutes");
     private readonly OTP_TTL_MS = toMins(5, "minutes");
     private readonly OTP_CACHE_PREFIX = "OTP:";
 
+    /**
+     * Constructor with Dependency Injection
+     *
+     * Injects all required repositories, mailers, caches, and token helpers.
+     * Every parameter has a default fallback to the production singleton instance,
+     * allowing zero-config instantiation in production and easy mocking in unit tests.
+     */
     constructor(
         private readonly userRepository: UserRepository = defaultUserRepo,
         private readonly mailProvider: MailProvider = mailJetProvider,
@@ -40,17 +46,13 @@ export class AuthServices {
         private readonly tokenService: TokenService = defaultTokenService,
         private readonly cache: ICacheProvider = cacheProvider
     ) {}
-
-    // Helpers
     private TRIES_KEY(email: string) {
         return `login_tries:${email}`;
     }
-
-    private BAN_KEY(email: string) {
+ private BAN_KEY(email: string) {
         return `login_banned:${email}`;
     }
 
-    // Helpers for Code Optimization
     public toPublicUser(user: any) {
         return {
             id: user.id || user._id?.toString(),
@@ -58,7 +60,6 @@ export class AuthServices {
             name: user.userName || user.name,
         };
     }
-
     public async issuePair(user: any, family: string) {
         const accessToken = this.tokenService.signAccess(user);
         const refreshToken = this.tokenService.signRefresh(user, family);
@@ -77,17 +78,13 @@ export class AuthServices {
 
     public async createAndStoreOtp(email: string): Promise<string> {
         const code = generateOtpEmail();
-
         await this.otpRepo.deleteOtp(email);
-
-        await this.cache.del(`${this.OTP_CACHE_PREFIX}${email}`);
-
+      await this.cache.del(`${this.OTP_CACHE_PREFIX}${email}`);
         await Otp.create({
             code,
             email,
             expiredAt: new Date(Date.now() + this.OTP_TTL_MS),
         });
-
         await this.cache.set(
             `${this.OTP_CACHE_PREFIX}${email}`,
             code,
@@ -97,24 +94,38 @@ export class AuthServices {
         return code;
     }
 
+    /**
+     * Validates an incoming OTP code and immediately consumes it.
+     *
+     * Replay Attack Protection:
+     * Once verified, the OTP is deleted from both Redis and MongoDB to prevent reuse.
+     *
+     * @param email - User email address
+     * @param code - The OTP code provided by the user
+     */
     public async validateAndConsumeOtp(email: string, code: string): Promise<void> {
         let stored = await this.cache.get(`${this.OTP_CACHE_PREFIX}${email}`);
         if (!stored) {
             const otpDoc = await this.otpRepo.getOtpByEmail(email);
+
             if (!otpDoc) {
                 throw new AppError("OTP expired, please request a new one!", 400);
             }
+
             stored = otpDoc.code;
         }
+
+        // 3. Compare submitted code with stored code
         if (String(stored) !== String(code)) {
             throw new AppError("Invalid OTP code!", 400);
         }
+
+        // 4. Consume OTP: Delete from both storage layers immediately
         await Promise.all([
             this.cache.del(`${this.OTP_CACHE_PREFIX}${email}`),
             this.otpRepo.deleteOtp(email),
         ]);
     }
-
     public async requireUserByEmail(email: string) {
         const user = await this.userRepository.findByEmail(email);
         if (!user) {
@@ -148,7 +159,7 @@ export class AuthServices {
         try {
             const user = await this.userRepository.createUser({
                 ...userData,
-                userName: userData.userName,
+                userName: userData.userName || userData.name || userData.email.split("@")[0] || "user",
                 password: hashedPassword,
                 provider: Provider.LOCAL,
             });
@@ -157,8 +168,10 @@ export class AuthServices {
                 throw new AppError("Failed to create user", 400);
             }
 
+            // Create and store verification OTP
             const code = await this.createAndStoreOtp(user.email);
 
+            // Send verification email via configured mail provider
             await this.mailProvider.sendEmail(
                 user.email,
                 "Verification Code",
@@ -167,6 +180,7 @@ export class AuthServices {
 
             return this.toPublicUser(user);
         } catch (err: any) {
+            // MongoDB duplicate key error code 11000 indicates the email is already registered
             if (err.code === 11000) {
                 throw new AppError("Email already exists", 409);
             }
@@ -177,29 +191,33 @@ export class AuthServices {
     async verifyAccount(userData: VerifyEmailDto) {
         const email = String(userData.email);
         const code = String(userData.code || userData.otp || "");
+
         if (!code) {
             throw new AppError("OTP code is required", 400);
         }
+
         const user = await this.requireUserByEmail(email);
+
+        // Prevent redundant verification
         if (user.isVerified) {
             throw new AppError("This email is already verified!", 409);
         }
 
+        // Validate OTP and set isVerified to true
         return this.verifyOtpAndUpdateUser(email, code, { isVerified: true });
     }
-
-    // Concept of compsation
     async verifyUser(userData: VerifyEmailDto) {
         return this.verifyAccount(userData);
     }
-
-    async enable2Verification(email: string, code: string) {
+async enable2Verification(email: string, code: string) {
         return this.verifyOtpAndUpdateUser(email, code, { twoStepVerification: true });
     }
 
     async verifyAfter2StepVer(email: string, code: string) {
         const user = await this.requireUserByEmail(email);
+
         await this.validateAndConsumeOtp(email, code);
+
         const pair = await this.issuePair(user, crypto.randomUUID());
 
         return {
@@ -207,35 +225,28 @@ export class AuthServices {
             user: this.toPublicUser(user),
         };
     }
-
     async login(loginDto: LoginDto) {
         const { email, password } = loginDto;
 
         if (await this.cache.get(this.BAN_KEY(email))) {
             throw new AppError("Too many requests, try again later", 429);
         }
-
         const user = await this.userRepository.checkUserByEmail(email);
         if (!user) {
             throw new AppError("Invalid email or password!", 401);
         }
-
         if (user.isVerified !== true) {
             throw new AppError("This email is not verified!", 403);
         }
-
         const match = await comparePassword(password, user.password || "");
-
         if (!match) {
             const currentAttempts = Number(await this.cache.get(this.TRIES_KEY(email))) || 0;
             const newAttempts = currentAttempts + 1;
-
             if (newAttempts >= this.MAX_LOGIN_TRIES) {
                 await this.cache.set(this.BAN_KEY(email), "1", this.BAN_TTL_MS);
                 await this.cache.del(this.TRIES_KEY(email));
                 throw new AppError("Too many failed login attempts. Account Banned", 429);
             }
-
             await this.cache.set(
                 this.TRIES_KEY(email),
                 String(newAttempts),
@@ -247,9 +258,7 @@ export class AuthServices {
                 401
             );
         }
-
         await this.cache.del(this.TRIES_KEY(email));
-
         if (user.twoStepVerification === true) {
             const code = await this.createAndStoreOtp(email);
 
@@ -264,7 +273,6 @@ export class AuthServices {
                 message: "OTP sent to your email",
             };
         }
-
         const pair = await this.issuePair(user, crypto.randomUUID());
 
         return {
@@ -272,22 +280,18 @@ export class AuthServices {
             user: this.toPublicUser(user),
         };
     }
-
-    // Alias for compatibility
     async loginUser(loginDtoOrEmail: LoginDto | string, maybePassword?: string) {
         if (typeof loginDtoOrEmail === "string") {
             return this.login({ email: loginDtoOrEmail, password: maybePassword || "" });
         }
         return this.login(loginDtoOrEmail);
     }
-
     async loginWithGoogle(idToken: string) {
-        const payload = await verifyGoogleToken(idToken);
 
+        const payload = await verifyGoogleToken(idToken);
         if (!payload.email_verified || !payload.email) {
             throw new AppError("Google email not verified", 401);
         }
-
         let user = await this.userRepository.findByEmail(payload.email);
 
         if (!user) {
@@ -298,9 +302,7 @@ export class AuthServices {
                 isVerified: true,
             });
         }
-
         const pair = await this.issuePair(user, crypto.randomUUID());
-
         return {
             ...pair,
             user: this.toPublicUser(user),
@@ -327,7 +329,6 @@ export class AuthServices {
             message: "OTP sent successfully",
         };
     }
-
     async forgetPassword(
         emailOrDto: ForgetPasswordDto | string,
         maybeCode?: string,
@@ -337,6 +338,7 @@ export class AuthServices {
         let code: string;
         let newPassword: string;
 
+        // Normalize polymorphic arguments
         if (typeof emailOrDto === "object") {
             email = emailOrDto.email;
             code = emailOrDto.code || emailOrDto.otp || "";
@@ -351,12 +353,12 @@ export class AuthServices {
             throw new AppError("Email, code, and new password are required", 400);
         }
 
+        // Verify user exists and consume OTP
         const user = await this.requireUserByEmail(email);
-
         await this.validateAndConsumeOtp(email, code);
 
+        // Hash new password and update database
         const hashedPassword = await hashPassword(newPassword);
-
         const updatedUser = await this.userRepository.updateUserByEmail(email, {
             password: hashedPassword,
         });
@@ -365,6 +367,7 @@ export class AuthServices {
             throw new AppError("Failed to update password", 400);
         }
 
+        // Invalidate all active sessions for this user
         await this.refreshTokenRepo.revokeAllForUser((updatedUser as any)._id || (updatedUser as any).id);
 
         return this.toPublicUser(updatedUser);
@@ -372,41 +375,34 @@ export class AuthServices {
 
     async refreshSession(refreshToken: string) {
         let payload: any;
-
         try {
             payload = this.tokenService.verifyRefresh(refreshToken);
         } catch {
             throw new AppError("Invalid refresh token", 401);
         }
-
         const tokenHash = this.tokenService.hash(refreshToken);
-
         const stored = await this.refreshTokenRepo.findByHash(tokenHash);
 
         if (!stored) {
             throw new AppError("Invalid refresh token", 401);
         }
-
         if (stored.revokedAt) {
             await this.refreshTokenRepo.revokeFamily(stored.family);
-
             throw new AppError("Token reuse detected", 401);
         }
-
         const user = await this.userRepository.findUserById(payload.sub);
-
         if (!user) {
             throw new AppError("User not found", 401);
         }
 
+        // 5. Atomically revoke current token
         const revoked = await this.refreshTokenRepo.revokeIfActive(stored._id);
-
         if (!revoked) {
             await this.refreshTokenRepo.revokeFamily(stored.family);
-
             throw new AppError("Token reuse detected", 401);
         }
 
+        // 6. Issue new rotated pair sharing the same family UUID
         return this.issuePair(user, stored.family);
     }
 }

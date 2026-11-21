@@ -1,7 +1,6 @@
 import { Gender, Provider } from "../enum/enum";
 import { Types } from "mongoose";
-
-export interface IUser {
+export interface IUser {    
     _id?: Types.ObjectId;
     id?: string;
     userName: string;

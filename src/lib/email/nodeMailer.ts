@@ -5,12 +5,11 @@ const transporter = nodemailer.createTransport({
     auth: {
         user: config.nodeMailer.auth.user,
         pass: config.nodeMailer.auth.pass,
-    }
+    },
 });
-
-export async function sendEmail(email:string, code:string) {
+export async function sendEmail(email: string, code: string) {
     const message = await transporter.sendMail({
-        from:`"FaceBookClone-APP" <${config.nodeMailer.auth.user}>`,
+        from: `"FaceBookClone-APP" <${config.nodeMailer.auth.user}>`,
         to: email,
         subject: "Your OTP Code",
         text: `Your OTP is: ${code}`,

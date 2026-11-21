@@ -1,3 +1,4 @@
+
 import { Gender } from "../../../lib/enum/enum";
 
 export interface RegisterDto {
@@ -11,13 +12,13 @@ export interface RegisterDto {
 
 export interface LoginDto {
     email: string;
+
     password: string;
 }
 
 export interface SendOtpDto {
     email: string;
 }
-
 export interface VerifyEmailDto {
     email: string;
     code?: string;
@@ -28,11 +29,11 @@ export interface ForgetPasswordDto {
     email: string;
     code?: string;
     otp?: string;
-    newPassword?: string;
+   newPassword?: string;
 }
 
 export interface RefreshTokenDto {
-    refreshToken: string;
+        refreshToken: string;
 }
 
 export interface GoogleLoginDto {

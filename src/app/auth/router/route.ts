@@ -1,4 +1,6 @@
+
 import { Router } from "express";
+
 import authController from "../controller/auth.controller";
 
 const router = Router();
@@ -12,5 +14,4 @@ router.post("/login-with-google", authController.loginWithGoogle);
 router.post("/refresh-token", authController.refreshSession);
 router.patch("/two-step-verification", authController.twoStepVerification);
 router.post("/two-step-verification-login", authController.verify2StepLogin);
-
 export default router;

@@ -1,6 +1,6 @@
+
 import { cacheProvider } from "./init";
 import { NextFunction, Request, Response } from "express";
-
 export function withCache(ttl = 3600) {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -10,9 +10,7 @@ export function withCache(ttl = 3600) {
                 res.setHeader("X-Cache", "HIT");
                 return res.status(200).json(JSON.parse(cached));
             }
-
             const originalJson = res.json.bind(res);
-            //// Interceptor
             res.json = (body) => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     res.setHeader("X-Cache", "MISS");
@@ -24,7 +22,6 @@ export function withCache(ttl = 3600) {
                 return originalJson(body);
             };
             next();
-
         } catch (err) {
             next(err);
         }

@@ -1,3 +1,4 @@
+
 import { UserRepository, userRepository } from "../../user/repository/user.repository";
 
 export class AuthRepository extends UserRepository {}

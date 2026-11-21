@@ -13,6 +13,16 @@ export const findByHash = async (tokenHash: string): Promise<RefreshTokenDocumen
     return RefreshToken.findOne({ tokenHash });
 };
 
+/**
+ * Revokes all active refresh tokens belonging to a specific session family.
+ *
+ * Replay Attack Defense:
+ * If an attacker intercepts a previously used refresh token and attempts to replay it,
+ * the server recognizes that the token was already revoked. To protect the legitimate user,
+ * this function revokes all tokens sharing the same `family` UUID, invalidating the entire stolen session.
+ *
+ * @param family - The UUID identifying the token family.
+ */
 export const revokeFamily = async (family: string) => {
     return RefreshToken.updateMany(
         { family, revokedAt: null },
@@ -45,4 +55,3 @@ export class RefreshTokenRepository {
 
 export const refreshTokenRepository = new RefreshTokenRepository();
 export default refreshTokenRepository;
-

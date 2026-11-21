@@ -1,18 +1,15 @@
 import Mailjet from "node-mailjet";
 import { MailProvider } from "./mailInterface";
-
 interface MailJetConfig {
     apiKey: string;
     apiSecret: string;
     fromEmail: string;
-    fromName: string;
+   fromName: string;
 }
-
 export class MailJetProvider implements MailProvider {
     private client: Mailjet | null = null;
     private readonly fromName: string;
     private readonly fromEmail: string;
-
     constructor(config: MailJetConfig) {
         this.fromName = config.fromName;
         this.fromEmail = config.fromEmail;
@@ -29,17 +26,21 @@ export class MailJetProvider implements MailProvider {
             console.warn(`[MailJet] MailJet is not configured. Email to ${email} skipped.`);
             return;
         }
-
         await this.client.post("send", { version: "v3.1" }).request({
-            messages: [
+            Messages: [
                 {
-                    from: {
-                        name: this.fromName,
-                        email: this.fromEmail,
+                    From: {
+                        Name: this.fromName,
+                        Email: this.fromEmail,
                     },
-                    to: [{ email, name: email }],
-                    subject,
-                    html,
+                    To: [
+                        {
+                            Email: email,
+                            Name: email,
+                        },
+                    ],
+                    Subject: subject,
+                    HTMLPart: html,
                 },
             ],
         });
